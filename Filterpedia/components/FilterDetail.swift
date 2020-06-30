@@ -20,6 +20,35 @@
 
 import UIKit
 
+extension FilterDetail: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [String : Any]) {
+        selectedImage = info[UIImagePickerControllerOriginalImage] as? UIImage
+        let keyWindow = UIApplication.shared.windows.filter {$0.isKeyWindow}.first
+        if var topController = keyWindow?.rootViewController {
+            while let presentedViewController = topController.presentedViewController {
+                topController = presentedViewController
+            }
+            topController.dismiss(animated: true, completion: nil)
+        }
+        if (filters.count == 0) {
+            self.imageView.image = selectedImage
+        } else {
+            applyFilter()
+        }
+    }
+    
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        let keyWindow = UIApplication.shared.windows.filter {$0.isKeyWindow}.first
+        if var topController = keyWindow?.rootViewController {
+            while let presentedViewController = topController.presentedViewController {
+                topController = presentedViewController
+            }
+            topController.dismiss(animated: true, completion: nil)
+        }
+    }
+}
+
 class FilterDetail: UIView
 {
     let rect640x640 = CGRect(x: 0, y: 0, width: 640, height: 640)
@@ -41,28 +70,56 @@ class FilterDetail: UIView
     let tableView: UITableView =
     {
         let tableView = UITableView(frame: CGRect.zero,
-            style: UITableViewStyle.plain)
+                                    style: UITableViewStyle.plain)
         
         tableView.register(FilterInputItemRenderer.self,
-            forCellReuseIdentifier: "FilterInputItemRenderer")
+                           forCellReuseIdentifier: "FilterInputItemRenderer")
         
         return tableView
     }()
     
     let scrollView = UIScrollView()
     
-    lazy var histogramToggleSwitch: UISwitch =
-    {
-        let toggle = UISwitch()
-        
-        toggle.isOn = !self.histogramDisplayHidden
-        toggle.addTarget(
-            self,
-            action: #selector(FilterDetail.toggleHistogramView),
-            for: .valueChanged)
-        
-        return toggle
+    lazy var pickImageBtn: UIButton =
+        {
+            let btn = UIButton()
+            btn.setTitleColor(.black, for: .normal)
+            btn.setTitle("Pick Image", for: .normal)
+            btn.addTarget(
+                self,
+                action: #selector(FilterDetail.pickImageTapped),
+                for: .touchUpInside)
+            
+            return btn
     }()
+    
+    lazy var revertBtn: UIButton =
+        {
+            let btn = UIButton()
+            btn.setTitleColor(.black, for: .normal)
+            btn.setTitle("Undo", for: .normal)
+            btn.addTarget(
+                self,
+                action: #selector(FilterDetail.revertTapped),
+                for: .touchUpInside)
+            
+            return btn
+    }()
+    
+    lazy var viewFormulaBtn: UIButton =
+        {
+            let btn = UIButton()
+            btn.setTitleColor(.black, for: .normal)
+            btn.setTitle("View Formula", for: .normal)
+            btn.addTarget(
+                self,
+                action: #selector(FilterDetail.viewFormulaTapped),
+                for: .touchUpInside)
+            
+            return btn
+    }()
+    
+    var selectedImage: UIImage?
     
     let histogramDisplay = HistogramDisplay()
     
@@ -97,14 +154,10 @@ class FilterDetail: UIView
     #if !arch(i386) && !arch(x86_64)
     let ciMetalContext = CIContext(mtlDevice: MTLCreateSystemDefaultDevice()!)
     #else
-        let ciMetalContext = CIContext()
+    let ciMetalContext = CIContext()
     #endif
     
     let ciOpenGLESContext = CIContext()
-  
-    /// Whether the user has changed the filter whilst it's
-    /// running in the background.
-    var pending = false
     
     /// Whether a filter is currently running in the background
     var busy = false
@@ -131,9 +184,10 @@ class FilterDetail: UIView
     }
     
     fileprivate var currentFilter: CIFilter?
+    fileprivate var filters = [CIFilter]()
     
     /// User defined filter parameter values
-    fileprivate var filterParameterValues: [String: AnyObject] = [kCIInputImageKey: assets.first!.ciImage]
+    fileprivate var filterParameterValues: [String: AnyObject] = [:]
     
     override init(frame: CGRect)
     {
@@ -141,7 +195,7 @@ class FilterDetail: UIView
         
         tableView.dataSource = self
         tableView.delegate = self
- 
+        
         addSubview(tableView)
         
         addSubview(scrollView)
@@ -156,7 +210,9 @@ class FilterDetail: UIView
         histogramDisplay.layer.shadowRadius = 5
         addSubview(histogramDisplay)
         
-        addSubview(histogramToggleSwitch)
+        addSubview(pickImageBtn)
+        addSubview(viewFormulaBtn)
+        addSubview(revertBtn)
         
         imageView.addSubview(activityIndicator)
         
@@ -168,9 +224,41 @@ class FilterDetail: UIView
         fatalError("init(coder:) has not been implemented")
     }
     
-    @objc func toggleHistogramView()
+    @objc func pickImageTapped()
     {
-       histogramDisplayHidden = !histogramToggleSwitch.isOn
+        let picker = UIImagePickerController()
+        picker.delegate = self
+        picker.allowsEditing = false
+        picker.sourceType = .photoLibrary
+        picker.mediaTypes = UIImagePickerController.availableMediaTypes(for: .savedPhotosAlbum)!
+        let keyWindow = UIApplication.shared.windows.filter {$0.isKeyWindow}.first
+        
+        if var topController = keyWindow?.rootViewController {
+            while let presentedViewController = topController.presentedViewController {
+                topController = presentedViewController
+            }
+            topController.present(picker, animated: true, completion: nil)
+        }
+        
+    }
+    
+    @objc func viewFormulaTapped()
+    {
+        let keyWindow = UIApplication.shared.windows.filter {$0.isKeyWindow}.first
+        
+        if var topController = keyWindow?.rootViewController {
+            while let presentedViewController = topController.presentedViewController {
+                topController = presentedViewController
+            }
+            topController.present(FormulaVC(with: filters), animated: true, completion: nil)
+        }
+    }
+    
+    @objc func revertTapped() {
+        if (filters.count > 0) {
+            filters.removeLast()
+        }
+        applyFilter()
     }
     
     func viewForZooming(in scrollView: UIScrollView) -> UIView? {
@@ -179,28 +267,34 @@ class FilterDetail: UIView
     
     func updateFromFilterName()
     {
-        guard let filterName = filterName, let filter = CIFilter(name: filterName) else
+        guard let filterName = filterName else
         {
             return
         }
         
-        imageView.subviews
-            .filter({ $0 is FilterAttributesDisplayable})
-            .forEach({ $0.removeFromSuperview() })
-        
-        if let widget = OverlayWidgets.getOverlayWidgetForFilter(filterName) as? UIView
-        {
-            imageView.addSubview(widget)
-            
-            widget.frame = imageView.bounds
+        if filters.last?.name == filterName {
+            currentFilter = filters.last!
+        } else {
+            currentFilter = CIFilter(name: filterName)
+            filters.append(currentFilter!)
         }
         
-        currentFilter = filter
+//        imageView.subviews
+//            .filter({ $0 is FilterAttributesDisplayable})
+//            .forEach({ $0.removeFromSuperview() })
+//
+//        if let widget = OverlayWidgets.getOverlayWidgetForFilter(filterName) as? UIView
+//        {
+//            imageView.addSubview(widget)
+//
+//            widget.frame = imageView.bounds
+//        }
+    
+        filterParameterValues.removeAll()
         fixFilterParameterValues()
-        
         tableView.reloadData()
         
-        applyFilter()
+//        applyFilter()
     }
     
     /// Assign a default image if required and ensure existing
@@ -214,6 +308,7 @@ class FilterDetail: UIView
         
         let attributes = currentFilter.attributes
         
+        
         for inputKey in currentFilter.inputKeys
         {
             if let attribute = attributes[inputKey] as? [String : AnyObject]
@@ -225,109 +320,95 @@ class FilterDetail: UIView
                 }
                 
                 // ensure previous values don't exceed kCIAttributeSliderMax for this filter
-                if let maxValue = attribute[kCIAttributeSliderMax] as? Float,
-                    let filterParameterValue = filterParameterValues[inputKey] as? Float, filterParameterValue > maxValue
-                {
-                    filterParameterValues[inputKey] = maxValue as AnyObject?
-                }
-                
-                // ensure vector is correct length
-                if let defaultVector = attribute[kCIAttributeDefault] as? CIVector,
-                    let filterParameterValue = filterParameterValues[inputKey] as? CIVector, defaultVector.count != filterParameterValue.count
-                {
-                    filterParameterValues[inputKey] = defaultVector
-                }
+//                if let maxValue = attribute[kCIAttributeSliderMax] as? Float,
+//                    let filterParameterValue = filterParameterValues[inputKey] as? Float, filterParameterValue > maxValue
+//                {
+                    filterParameterValues[inputKey] = currentFilter.value(forKey: inputKey) as AnyObject?
+//                }
+//                
+//                // ensure vector is correct length
+//                if let defaultVector = attribute[kCIAttributeDefault] as? CIVector,
+//                    let filterParameterValue = filterParameterValues[inputKey] as? CIVector, defaultVector.count != filterParameterValue.count
+//                {
+//                    filterParameterValues[inputKey] = defaultVector
+//                }
             }
         }
     }
-
+    
     func applyFilter()
     {
-        guard !busy else
-        {
-            pending = true
-            return
-        }
-        
-        guard let currentFilter = self.currentFilter else
+        guard let selectedImage = self.selectedImage else
         {
             return
         }
         
-        busy = true
+        self.busy = true
         
-        imageView.subviews
-            .filter({ $0 is FilterAttributesDisplayable})
-            .forEach({ ($0 as? FilterAttributesDisplayable)?.setFilter(currentFilter) })
-        
-        let queue = currentFilter is VImageFilter ?
-            DispatchQueue.main :
-            DispatchQueue.global()
-        
-        queue.async
-        {
-            let startTime = CFAbsoluteTimeGetCurrent()
-            
+        if let currentFilter = self.currentFilter {
+//            imageView.subviews
+//                .filter({ $0 is FilterAttributesDisplayable})
+//                .forEach({ ($0 as? FilterAttributesDisplayable)?.setFilter(currentFilter) })
+//
             for (key, value) in self.filterParameterValues where currentFilter.inputKeys.contains(key)
             {
                 currentFilter.setValue(value, forKey: key)
             }
-            
-            let outputImage = currentFilter.outputImage!
-            let finalImage: CGImage
-  
-            let context = (currentFilter is MetalRenderable) ? self.ciMetalContext : self.ciOpenGLESContext
-            
-            if outputImage.extent.width == 1 || outputImage.extent.height == 1
-            {
-                // if a filter's output image height or width is 1,
-                // (e.g. a reduction filter) stretch to 640x640
-                
-                let stretch = CIFilter(name: "CIStretchCrop",
-                    withInputParameters: ["inputSize": CIVector(x: 640, y: 640),
-                        "inputCropAmount": 0,
-                        "inputCenterStretchAmount": 1,
-                        kCIInputImageKey: outputImage])!
-                
-                finalImage = context.createCGImage(stretch.outputImage!,
-                    from: self.rect640x640)!
-            }
-            else if outputImage.extent.width < 640 || outputImage.extent.height < 640
-            {
-                // if a filter's output image is smaller than 640x640 (e.g. circular wrap or lenticular
-                // halo), composite the output over a black background)
-                
-                self.compositeOverBlackFilter.setValue(outputImage,
-                    forKey: kCIInputImageKey)
-                
-                finalImage = context.createCGImage(self.compositeOverBlackFilter.outputImage!,
-                    from: self.rect640x640)!
-            }
-            else
-            {
-                finalImage = context.createCGImage(outputImage,
-                    from: self.rect640x640)!
-            }
-            
-            let endTime = (CFAbsoluteTimeGetCurrent() - startTime)
-            
-            DispatchQueue.main.async
-            {
-                if !self.histogramDisplayHidden
-                {
-                    self.histogramDisplay.imageRef = finalImage
-                }
-                
-                self.imageView.image = UIImage(cgImage: finalImage)
-                self.busy = false
-                
-                if self.pending
-                {
-                    self.pending = false
-                    self.applyFilter()
-                }
-            }
         }
+        
+        var tempOutput = CIImage(image: selectedImage)
+        
+        for index in 0..<self.filters.count {
+            let filter = self.filters[index]
+            var parameters: [String: Any] = [:]
+            for keyIndex in 0..<filter.inputKeys.count {
+                if (filter.inputKeys[keyIndex] == kCIInputImageKey) {
+                    parameters[filter.inputKeys[keyIndex]] = tempOutput
+                } else {
+                    parameters[filter.inputKeys[keyIndex]] = filter.value(forKey: filter.inputKeys[keyIndex])
+                }
+            }
+            tempOutput = CIFilter(name: filter.name, withInputParameters: parameters)?.outputImage
+        }
+        let outputImage = tempOutput!
+        
+        let finalImage: CGImage
+        
+        let context = self.ciOpenGLESContext
+        
+        if outputImage.extent.width == 1 || outputImage.extent.height == 1
+        {
+            // if a filter's output image height or width is 1,
+            // (e.g. a reduction filter) stretch to 640x640
+            
+            let stretch = CIFilter(name: "CIStretchCrop",
+                                   withInputParameters: ["inputSize": CIVector(x: 640, y: 640),
+                                                         "inputCropAmount": 0,
+                                                         "inputCenterStretchAmount": 1,
+                                                         kCIInputImageKey: outputImage])!
+            
+            finalImage = context.createCGImage(stretch.outputImage!,
+                                               from: self.rect640x640)!
+        }
+        else if outputImage.extent.width < 640 || outputImage.extent.height < 640
+        {
+            // if a filter's output image is smaller than 640x640 (e.g. circular wrap or lenticular
+            // halo), composite the output over a black background)
+            
+            self.compositeOverBlackFilter.setValue(outputImage,
+                                                   forKey: kCIInputImageKey)
+            
+            finalImage = context.createCGImage(self.compositeOverBlackFilter.outputImage!,
+                                               from: self.rect640x640)!
+        }
+        else
+        {
+            finalImage = context.createCGImage(outputImage,
+                                               from: outputImage.extent)!
+        }
+        self.busy = false
+        self.imageView.image = UIImage(ciImage: outputImage)
+        
     }
     
     override func layoutSubviews()
@@ -337,19 +418,19 @@ class FilterDetail: UIView
         let twoThirdHeight = frame.height * 0.666
         
         scrollView.frame = CGRect(x: halfWidth - thirdHeight,
-            y: 0,
-            width: twoThirdHeight,
-            height: twoThirdHeight)
+                                  y: 0,
+                                  width: twoThirdHeight,
+                                  height: twoThirdHeight)
         
         imageView.frame = CGRect(x: 0,
-            y: 0,
-            width: scrollView.frame.width,
-            height: scrollView.frame.height)
+                                 y: 0,
+                                 width: scrollView.frame.width,
+                                 height: scrollView.frame.height)
         
         tableView.frame = CGRect(x: 0,
-            y: twoThirdHeight,
-            width: frame.width,
-            height: thirdHeight)
+                                 y: twoThirdHeight,
+                                 width: frame.width,
+                                 height: thirdHeight)
         
         histogramDisplay.frame = CGRect(
             x: 0,
@@ -357,11 +438,24 @@ class FilterDetail: UIView
             width: frame.width,
             height: thirdHeight).insetBy(dx: 5, dy: 5)
         
-        histogramToggleSwitch.frame = CGRect(
-            x: frame.width - histogramToggleSwitch.intrinsicContentSize.width,
+        pickImageBtn.frame = CGRect(
+            x: frame.width - pickImageBtn.intrinsicContentSize.width,
             y: 0,
-            width: intrinsicContentSize.width,
-            height: intrinsicContentSize.height)
+            width: pickImageBtn.intrinsicContentSize.width,
+            height: pickImageBtn.intrinsicContentSize.height)
+        
+        viewFormulaBtn.frame = CGRect(
+            x: frame.width - viewFormulaBtn.intrinsicContentSize.width,
+            y: pickImageBtn.frame.maxY + 20,
+            width: viewFormulaBtn.intrinsicContentSize.width,
+            height: viewFormulaBtn.intrinsicContentSize.height)
+        
+        revertBtn.frame = CGRect(
+        x: frame.width - revertBtn.intrinsicContentSize.width,
+        y: viewFormulaBtn.frame.maxY + 20,
+        width: revertBtn.intrinsicContentSize.width,
+        height: revertBtn.intrinsicContentSize.height)
+
         
         tableView.separatorStyle = UITableViewCellSeparatorStyle.none
         
@@ -397,14 +491,14 @@ extension FilterDetail: UITableViewDataSource
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell
     {
         let cell = tableView.dequeueReusableCell(withIdentifier: "FilterInputItemRenderer",
-            for: indexPath) as! FilterInputItemRenderer
- 
+                                                 for: indexPath) as! FilterInputItemRenderer
+        
         if let inputKey = currentFilter?.inputKeys[indexPath.row],
             let attribute = currentFilter?.attributes[inputKey] as? [String : AnyObject]
         {
             cell.detail = (inputKey: inputKey,
-                attribute: attribute,
-                filterParameterValues: filterParameterValues)
+                           attribute: attribute,
+                           filterParameterValues: filterParameterValues)
         }
         
         cell.delegate = self
@@ -419,16 +513,42 @@ extension FilterDetail: FilterInputItemRendererDelegate
 {
     func filterInputItemRenderer(_ filterInputItemRenderer: FilterInputItemRenderer, didChangeValue: AnyObject?, forKey: String?)
     {
-        if let key = forKey, let value = didChangeValue
+        if let key = forKey, let value = didChangeValue, key != kCIInputImageKey
         {
             filterParameterValues[key] = value
-            
+            if filters.count == 0 || (filters.count > 0 && (filters.last?.name != currentFilter!.name)) {
+                filters.append(currentFilter!)
+            }
             applyFilter()
+            
         }
     }
     
     func tableView(_ tableView: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool
     {
         return false
+    }
+}
+
+class FormulaVC: UITableViewController {
+    let filters: [CIFilter]
+    init(with filters: [CIFilter]) {
+        self.filters = filters
+        super.init(style: .plain)
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        cell.textLabel?.text = filters[indexPath.row].description
+        cell.textLabel?.numberOfLines = 0
+        return cell
+    }
+    
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return filters.count
     }
 }

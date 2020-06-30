@@ -25,7 +25,6 @@ class FilterNavigator: UIView
 {
     let filterCategories =
     [
-        CategoryCustomFilters,
         kCICategoryBlur,
         kCICategoryColorAdjustment,
         kCICategoryColorEffect,
@@ -88,7 +87,7 @@ class FilterNavigator: UIView
     {
         super.init(frame: frame)
         
-        CustomFiltersVendor.registerFilters()
+//        CustomFiltersVendor.registerFilters()
         
         tableView.dataSource = self
         tableView.delegate = self

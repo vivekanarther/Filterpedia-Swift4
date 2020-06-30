@@ -133,9 +133,9 @@ class FilterInputItemRenderer: UITableViewCell
             action: #selector(FilterInputItemRenderer.vectorSliderChangeHandler),
             for: UIControlEvents.valueChanged)
         
-        imagesSegmentedControl.addTarget(self,
-            action: #selector(FilterInputItemRenderer.imagesSegmentedControlChangeHandler),
-            for: UIControlEvents.valueChanged)
+//        imagesSegmentedControl.addTarget(self,
+//            action: #selector(FilterInputItemRenderer.imagesSegmentedControlChangeHandler),
+//            for: UIControlEvents.valueChanged)
         
         textEditButton.addTarget(self,
             action: #selector(FilterInputItemRenderer.textEditClicked),

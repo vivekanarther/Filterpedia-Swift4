@@ -96,7 +96,7 @@ class VectorSlider: UIControl
         for _ in 0 ..< vector.count
         {
             let slider = UISlider()
-          
+            slider.isContinuous = false
             slider.maximumValue = Float(sliderMax)
             slider.addTarget(self, action: #selector(VectorSlider.sliderChangeHandler), for: UIControlEvents.valueChanged)
             

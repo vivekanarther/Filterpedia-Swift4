@@ -56,6 +56,7 @@ class LabelledSlider: UIControl
     override init(frame: CGRect)
     {
         super.init(frame: frame)
+        slider.isContinuous = false
 
         minValueLabel.textAlignment = .right
         
