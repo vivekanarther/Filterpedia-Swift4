@@ -106,6 +106,19 @@ class FilterDetail: UIView
             return btn
     }()
     
+    lazy var applyBtn: UIButton =
+        {
+            let btn = UIButton()
+            btn.setTitleColor(.black, for: .normal)
+            btn.setTitle("Apply", for: .normal)
+            btn.addTarget(
+                self,
+                action: #selector(FilterDetail.applyFilter),
+                for: .touchUpInside)
+            
+            return btn
+    }()
+    
     lazy var viewFormulaBtn: UIButton =
         {
             let btn = UIButton()
@@ -213,6 +226,7 @@ class FilterDetail: UIView
         addSubview(pickImageBtn)
         addSubview(viewFormulaBtn)
         addSubview(revertBtn)
+        addSubview(applyBtn)
         
         imageView.addSubview(activityIndicator)
         
@@ -260,6 +274,8 @@ class FilterDetail: UIView
         }
         applyFilter()
     }
+    
+    
     
     func viewForZooming(in scrollView: UIScrollView) -> UIView? {
         return imageView
@@ -336,7 +352,7 @@ class FilterDetail: UIView
         }
     }
     
-    func applyFilter()
+    @objc func applyFilter()
     {
         guard let selectedImage = self.selectedImage else
         {
@@ -455,6 +471,12 @@ class FilterDetail: UIView
         y: viewFormulaBtn.frame.maxY + 20,
         width: revertBtn.intrinsicContentSize.width,
         height: revertBtn.intrinsicContentSize.height)
+        
+        applyBtn.frame = CGRect(
+        x: frame.width - applyBtn.intrinsicContentSize.width,
+        y: revertBtn.frame.maxY + 20,
+        width: applyBtn.intrinsicContentSize.width,
+        height: applyBtn.intrinsicContentSize.height)
 
         
         tableView.separatorStyle = UITableViewCellSeparatorStyle.none
