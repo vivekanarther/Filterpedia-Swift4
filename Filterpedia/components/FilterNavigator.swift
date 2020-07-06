@@ -23,6 +23,9 @@ import UIKit
 
 class FilterNavigator: UIView
 {
+    
+    private lazy var searchBar = UISearchBar()
+    
     let filterCategories =
     [
         kCICategoryBlur,
@@ -91,6 +94,13 @@ class FilterNavigator: UIView
         
         tableView.dataSource = self
         tableView.delegate = self
+        
+        searchBar.searchBarStyle = .prominent
+        searchBar.placeholder = " Search..."
+        searchBar.sizeToFit()
+        searchBar.backgroundImage = UIImage()
+        searchBar.delegate = self
+        tableView.tableHeaderView = searchBar
         
         segmentedControl.selectedSegmentIndex = 0
         segmentedControl.addTarget(self,
@@ -181,6 +191,12 @@ extension FilterNavigator: UITableViewDelegate
         return CIFilter.filterNames(inCategory: category).filter
         {
             !exclusions.contains($0)
+        }.filter { (value) -> Bool in
+            if let searchText = searchBar.text,
+                searchText.count > 0 {
+                return value.contains(searchText)
+            }
+            return true
         }
     }
     
@@ -189,6 +205,12 @@ extension FilterNavigator: UITableViewDelegate
         return CIFilter.filterNames(inCategories: categories).filter
         {
             !exclusions.contains($0)
+        }.filter { (value) -> Bool in
+            if let searchText = searchBar.text,
+                searchText.count > 0 {
+                return value.contains(searchText)
+            }
+            return true
         }
     }
 }
@@ -256,5 +278,11 @@ enum FilterNavigatorMode: String
 protocol FilterNavigatorDelegate: class
 {
     func filterNavigator(_ filterNavigator: FilterNavigator, didSelectFilterName: String)
+}
+
+extension FilterNavigator: UISearchBarDelegate {
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        self.tableView.reloadData()
+    }
 }
 
