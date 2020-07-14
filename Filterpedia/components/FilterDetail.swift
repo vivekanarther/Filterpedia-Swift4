@@ -22,6 +22,16 @@ import UIKit
 
 extension FilterDetail: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     
+    var topViewController: UIViewController? {
+        let keyWindow = UIApplication.shared.windows.filter {$0.isKeyWindow}.first
+        if var topController = keyWindow?.rootViewController {
+            while let presentedViewController = topController.presentedViewController {
+                topController = presentedViewController
+            }
+            return topController
+        }
+        return nil
+    }
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [String : Any]) {
         selectedImage = info[UIImagePickerControllerOriginalImage] as? UIImage
         let keyWindow = UIApplication.shared.windows.filter {$0.isKeyWindow}.first
@@ -118,6 +128,19 @@ class FilterDetail: UIView
             
             return btn
     }()
+    
+    lazy var saveBtn: UIButton =
+        {
+                let btn = UIButton()
+                btn.setTitleColor(.black, for: .normal)
+                btn.setTitle("Save Image", for: .normal)
+                btn.addTarget(
+                    self,
+                    action: #selector(FilterDetail.saveImage),
+                    for: .touchUpInside)
+                
+                return btn
+        }()
     
     lazy var viewFormulaBtn: UIButton =
         {
@@ -227,6 +250,7 @@ class FilterDetail: UIView
         addSubview(viewFormulaBtn)
         addSubview(revertBtn)
         addSubview(applyBtn)
+        addSubview(saveBtn)
         
         imageView.addSubview(activityIndicator)
         
@@ -350,6 +374,26 @@ class FilterDetail: UIView
 //                }
             }
         }
+    }
+    
+    @objc func saveImage() {
+        if let ciImage = self.imageView.image?.ciImage,
+            let cgImage = CIContext(options: nil).createCGImage(ciImage, from: ciImage.extent) {
+            let image = UIImage(cgImage: cgImage)
+            UIImageWriteToSavedPhotosAlbum(image, self, #selector(saveError), nil)
+        }
+    }
+    
+    @objc func saveError(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
+        let message: String
+        if error != nil {
+            message = "Image Not Saved!"
+        } else {
+            message = "Image Saved!"
+        }
+        let alert = UIAlertController(title: "", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Ok", style: .default, handler: nil))
+        self.topViewController?.present(alert, animated: true, completion: nil)
     }
     
     @objc func applyFilter()
@@ -477,6 +521,12 @@ class FilterDetail: UIView
         y: revertBtn.frame.maxY + 20,
         width: applyBtn.intrinsicContentSize.width,
         height: applyBtn.intrinsicContentSize.height)
+        
+        saveBtn.frame = CGRect(
+        x: frame.width - saveBtn.intrinsicContentSize.width,
+        y: applyBtn.frame.maxY + 20,
+        width: saveBtn.intrinsicContentSize.width,
+        height: saveBtn.intrinsicContentSize.height)
 
         
         tableView.separatorStyle = UITableViewCellSeparatorStyle.none
